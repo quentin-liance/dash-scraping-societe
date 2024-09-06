@@ -1,0 +1,66 @@
+[tool.poetry]
+name = "dash-scraping-societe"
+version = "0.1.0"
+description = ""
+authors = ["Quentin Liance <quentin.liance@polynom.io>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.12"
+dash = "^2.17.1"
+pandas = "^2.2.2"
+dash-bootstrap-components = "^1.6.0"
+openpyxl = "^3.1.5"
+beautifulsoup4 = "^4.12.3"
+requests = "^2.32.3"
+lxml = "^5.3.0"
+pyyaml = "^6.0.2"
+ipykernel = "^6.21.2"
+
+[tool.poetry.group.dev.dependencies]
+pre-commit = "^3"
+ruff = "^0"
+bandit = "^1.7"
+mypy = "^1.9.0"
+nbconvert = "^7.16.4"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+    "I",   # isort
+    "N",   # pep8-naming
+    "PD",  # pandas
+    "PL",  # pylint
+    "NPY", # numpy
+    "AIR", # airflow
+]
+ignore = [
+    "E501", # line-too-long overrided by ruff format
+]
+pylint.max-args = 10 # allow up to 10 args in a function (instead of 5)
+pycodestyle.max-doc-length = 120 # allow up to N chars in a docstring or comment (instead of 80)
+flake8-bugbear.extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.params.Depends",
+    "fastapi.Query",
+    "fastapi.params.Query",
+]
+pep8-naming.classmethod-decorators = [
+    "pydantic.validator", # Allow Pydantic's `@validator` decorator to trigger class method treatment.
+]
+
+[tool.bandit]
+exclude_dirs = []
+
+[tool.mypy]
+strict = true
+scripts_are_modules = true
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
