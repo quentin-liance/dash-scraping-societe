@@ -43,108 +43,70 @@ app.layout = dbc.Container(
     fluid=True,
 )
 
-# Fonction de prétraitement avec scraping pour les noms commerciaux
 def preprocess_data(fournisseur):
     print("Starting preprocessing with scraping")
 
-    current_dir = os.path.dirname(__file__)
-    headers_path = os.path.join(current_dir, 'headers.yml')
-
-    # Chargement des headers
+    # Chargement des headers depuis le fichier YAML
+    headers_path = os.path.join(os.path.dirname(__file__), 'headers.yml')
     with open(headers_path, "r") as f_headers:
         browser_headers = yaml.safe_load(f_headers)
 
-    # Préparation des données
+    # Préparation des données du fournisseur
     fournisseur.columns = [col.upper() for col in fournisseur.columns]
     fournisseur["NOM_FORMATE"] = fournisseur["NOM"].str.strip().str.lower().str.replace(" ", "-")
     fournisseur["SIREN"] = fournisseur["SIREN"].str.zfill(9)
     fournisseur["SIRET"] = fournisseur["SIRET"].str.zfill(14)
-    fournisseur["URL_SIREN"] = csts.SOCIETE_URL + fournisseur["NOM_FORMATE"] + "-" + fournisseur["SIREN"].astype("string") + csts.HTML
-    fournisseur["URL_SIRET"] = (csts.ETABLISSEMENT_URL+ fournisseur["NOM_FORMATE"] + "-" + fournisseur["SIRET"].astype("string") + csts.HTML)
 
-    societe_url = fournisseur["URL_SIREN"].unique().tolist()
-    total_iterations = len(societe_url)
-    current_iteration = 0
+    # Génération des URLs
+    fournisseur["URL_SIREN"] = csts.SOCIETE_URL + fournisseur["NOM_FORMATE"] + "-" + fournisseur["SIREN"].astype(str) + csts.HTML
+    fournisseur["URL_SIRET"] = csts.ETABLISSEMENT_URL + fournisseur["NOM_FORMATE"] + "-" + fournisseur["SIRET"].astype(str) + csts.HTML
 
-    # Scraping des noms commerciaux
-    donnees_entreprises = []
-    for url in societe_url:
-        try:
-            browser_name = random.choice(csts.BROWSERS)
-            headers = browser_headers[browser_name]
-            response = requests.get(url=url, headers=headers)
-            time.sleep(csts.TIME_SLEEP)
-            html = response.content
-            contenu_page = bs(html, "html.parser")
-            contenu_page = contenu_page.find_all(name="table", class_="Table identity mt-16")[0]
-            numero_siren = url.split("-")[-1].split(".")[0]
-            nom_commercial = contenu_page.find(name="td", class_="break-word").text
-            numero_tva = contenu_page.find(name="div", id="tva_number").text.replace("\n", "")
-            donnees_entreprise = pd.DataFrame([{
-                "SIREN": numero_siren,
-                "NOM_COMMERCIAL": nom_commercial,
-                "NUMERO_TVA": numero_tva,
-            }])
-            donnees_entreprises.append(donnees_entreprise)
-        except Exception as e:
-            print(f"Error processing URL {url}: {e}")
-            continue
+    # Fonction de scraping
+    def scrape_data(urls, parse_function):
+        results = []
+        total_iterations = len(urls)
+        for i, url in enumerate(urls):
+            try:
+                browser_name = random.choice(csts.BROWSERS)
+                headers = browser_headers[browser_name]
+                response = requests.get(url=url, headers=headers)
+                time.sleep(csts.TIME_SLEEP)
+                results.append(parse_function(url, response.content))
+            except Exception as e:
+                print(f"Error processing URL {url}: {e}")
+            print(f"Progress: {int((i+1) / total_iterations * 100)}%")
+        return pd.concat(results, ignore_index=True) if results else pd.DataFrame()
 
-        current_iteration += 1
-        progress_percentage = int((current_iteration / total_iterations) * 100)
-        print(f"Progress: {progress_percentage}%")
+    # Parsing des noms commerciaux
+    def parse_nom_commercial(url, html_content):
+        soup = bs(html_content, "html.parser")
+        table = soup.find("table", class_="Table identity mt-16")
+        return pd.DataFrame([{
+            "SIREN": url.split("-")[-1].split(".")[0],
+            "NOM_COMMERCIAL": table.find("td", class_="break-word").text,
+            "NUMERO_TVA": soup.find("div", id="tva_number").text.strip()
+        }])
 
-    donnees_entreprises = pd.concat(objs=donnees_entreprises, axis=0, ignore_index=True)
-    print("Scraping des noms commerciaux terminé.")
+    # Parsing des adresses
+    def parse_adresse(url, html_content):
+        soup = bs(html_content, "html.parser")
+        adresse = soup.find_all("a", class_="Lien secondaire")[-1].text.strip()
+        return pd.DataFrame([{
+            "SIRET": url.split("-")[-1].split(".")[0],
+            "ADRESSE_ETABLISSEMENT": adresse
+        }])
 
-    # Scraping de l'adresse des établissements
-    etablissement_url = fournisseur["URL_SIRET"].unique().tolist()
-    total_iterations = len(etablissement_url)
-    current_iteration = 0
+    # Scraping des noms commerciaux et des adresses
+    donnees_entreprises = scrape_data(fournisseur["URL_SIREN"].unique(), parse_nom_commercial)
+    adresses_etablissements = scrape_data(fournisseur["URL_SIRET"].unique(), parse_adresse)
 
-    adresses_etablissements = []
-    for url in etablissement_url:
-        try:
-            browser_name = random.choice(csts.BROWSERS)
-            headers = browser_headers[browser_name]
-            response = requests.get(url=url, headers=headers)
-            time.sleep(csts.TIME_SLEEP)
-            html = response.content
-            contenu_page = bs(html, "html.parser")
-            contenu_page = contenu_page.find_all(name="a", class_="Lien secondaire")[-1]
-            numero_siret = url.split("-")[-1].split(".")[0]
-            adresse_etablissement = contenu_page.text.strip()
-            adresse_etablissement = pd.DataFrame([{
-                "SIRET": numero_siret,
-                "ADRESSE_ETABLISSEMENT": adresse_etablissement,
-                }])
-            adresses_etablissements.append(adresse_etablissement)
-
-        except Exception as e:
-            print(f"Error processing URL {url}: {e}")
-            continue
-
-        current_iteration += 1
-        progress_percentage = int((current_iteration / total_iterations) * 100)
-        print(f"Progress: {progress_percentage}%")
-    adresses_etablissements = pd.concat(objs=adresses_etablissements, axis=0, ignore_index=True)
-    print("Scraping de l'adresse des établissements terminé.")
-
-    # Rassemblement
+    # Fusion des résultats
     fournisseur_enrichie = (fournisseur
-        .merge(
-            right=donnees_entreprises,
-            how="left",   
-            on="SIREN",
-            validate="m:1",
-            )
-        .merge(
-            right=adresses_etablissements,
-            how="left",
-            on="SIRET",
-            validate="1:1",
-            )
-        )
+        .merge(donnees_entreprises, how="left", on="SIREN", validate="m:1")
+        .merge(adresses_etablissements, how="left", on="SIRET", validate="1:1")
+    )
+    
+    print("Preprocessing completed.")
     return fournisseur_enrichie
 
 @app.callback(
