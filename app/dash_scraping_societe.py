@@ -34,9 +34,12 @@ app.layout = dbc.Container(
             },
             multiple=False
         ),
-        html.Div(id='output-data-upload'),
-        dbc.Progress(id="progress-bar", value=0, striped=True, animated=True, className="mt-3"),
-        html.Div(id="progress-text", className="mt-3"),
+        # html.Div(id='output-data-upload'),
+        dcc.Loading(
+            id="loading-output",
+            type="default",  # Vous pouvez choisir différents types de roue de chargement
+            children=html.Div(id="output-data-upload")
+            ),
         dbc.Button("Télécharger le fichier modifié", id="download-btn", color="primary", className="mt-3", disabled=True),
         dcc.Download(id="download-dataframe-xlsx"),
     ],
@@ -70,6 +73,7 @@ def preprocess_data(fournisseur):
                 browser_name = random.choice(csts.BROWSERS)
                 headers = browser_headers[browser_name]
                 response = requests.get(url=url, headers=headers)
+                print(response.status_code)
                 time.sleep(csts.TIME_SLEEP)
                 results.append(parse_function(url, response.content))
             except Exception as e:
@@ -111,16 +115,13 @@ def preprocess_data(fournisseur):
 
 @app.callback(
     [Output("output-data-upload", "children"),
-     Output("progress-bar", "value"),
-     Output("progress-bar", "label"),
-     Output("progress-text", "children"),
      Output("download-btn", "disabled")],
     Input("upload-data", "contents"),
     State("upload-data", "filename")
 )
 def update_output(contents, filename):
     if contents is None:
-        return html.Div("Veuillez charger un fichier."), 0, "", "En attente du fichier...", True
+        return html.Div("Veuillez charger un fichier."), True
 
     print(f"File received: {filename}")
 
@@ -131,18 +132,13 @@ def update_output(contents, filename):
     # Appliquer le prétraitement simple
     fournisseur_enrichie = preprocess_data(fournisseur)
 
-    # Mise à jour finale de la progression
-    value = 100  # Progression à 100% après traitement
-    label = "100%"
-    text = "Prétraitement terminé"
     download_disabled = False  # Activer le bouton de téléchargement
 
     return (
         html.Div([
             html.H5(f"Fichier traité : {filename}"),
             dbc.Table.from_dataframe(fournisseur_enrichie.head(), striped=True, bordered=True, hover=True),
-        ]),
-        value, label, text, download_disabled
+        ]), download_disabled
     )
 
 # Callback pour permettre le téléchargement du fichier modifié
